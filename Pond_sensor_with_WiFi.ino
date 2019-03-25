@@ -53,6 +53,7 @@
 #define BOARD_LED 5       // On ThingDev, LED is connected to Pin 5
 
 #include <ESP8266WiFi.h>
+#include "adc_mode.h"     // Needed in order to use getVcc()
 
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
@@ -197,6 +198,8 @@ void process_ponddata() {
   SKETCH_PRINT(F("."));
   SKETCH_PRINTLN(ponddata.Submerged_T % 10);
   ponddata.Batt_mV = 3300;
+  SKETCH_PRINT("ESP8266 Vcc: ");
+  SKETCH_PRINTLN(ESP.getVcc());
   ponddata.Pump_Status = (int) WiFi.RSSI(); 
   ponddata.Aerator_Status = 0;
   ponddata.Millis = numberOfLoops; 
