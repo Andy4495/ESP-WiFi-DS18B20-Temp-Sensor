@@ -54,7 +54,7 @@
 #define DS18B20_SIGNAL_PIN  4
 
 #include <ESP8266WiFi.h>
-//#include "adc_mode.h"     // Needed in order to use getVcc()
+#include "adc_mode.h"     // Needed in order to use getVcc()
 #include <OneWire.h>
 
 #include "Adafruit_MQTT.h"
@@ -287,9 +287,9 @@ void process_ponddata() {
   SKETCH_PRINT(ponddata.Submerged_T / 10);
   SKETCH_PRINT(F("."));
   SKETCH_PRINTLN(ponddata.Submerged_T % 10);
-  ponddata.Batt_mV = 3300;
-  //  SKETCH_PRINT("ESP8266 Vcc: ");
-  //  SKETCH_PRINTLN(ESP.getVcc());
+  ponddata.Batt_mV = ESP.getVcc();
+  SKETCH_PRINT("ESP8266 Vcc: ");
+  SKETCH_PRINTLN(ponddata.Batt_mV);
   ponddata.Pump_Status = (int) WiFi.RSSI();
   ponddata.Aerator_Status = 0;
   ponddata.Millis = numberOfLoops;

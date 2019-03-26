@@ -1,4 +1,4 @@
-#ifdef  ADC_MODE_H
+#ifndef  ADC_MODE_H
 #define ADC_MODE_H
 
 // This macro is needed in order to use getVcc()
