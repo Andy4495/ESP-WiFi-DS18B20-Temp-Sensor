@@ -51,9 +51,11 @@
 #endif
 
 #define BOARD_LED 5       // On ThingDev, LED is connected to Pin 5
+#define DS18B20_SIGNAL_PIN  4
 
 #include <ESP8266WiFi.h>
-#include "adc_mode.h"     // Needed in order to use getVcc()
+//#include "adc_mode.h"     // Needed in order to use getVcc()
+#include <OneWire.h>
 
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
@@ -93,6 +95,30 @@ PondData ponddata;
 int lostConnectionCount = 0;
 unsigned long numberOfLoops = 0;
 
+OneWire  ds18b20(DS18B20_SIGNAL_PIN);  // Requires a 4.7K pull-up resistor
+// Address is not needed since we only have one device on the bus
+uint8_t scratchpad[9];
+// OneWire commands
+#define GETTEMP         0x44  // Tells device to take a temperature reading and put it on the scratchpad
+#define COPYSCRATCH     0x48  // Copy EEPROM
+#define READSCRATCH     0xBE  // Read EEPROM
+#define WRITESCRATCH    0x4E  // Write to EEPROM
+// Scratchpad locations
+#define TEMP_LSB        0
+#define TEMP_MSB        1
+#define HIGH_ALARM_TEMP 2
+#define LOW_ALARM_TEMP  3
+#define CONFIGURATION   4
+#define INTERNAL_BYTE   5
+#define COUNT_REMAIN    6
+#define COUNT_PER_C     7
+#define SCRATCHPAD_CRC  8
+// Device resolution
+#define TEMP_9_BIT  0x1F //  9 bit
+#define TEMP_10_BIT 0x3F // 10 bit
+#define TEMP_11_BIT 0x5F // 11 bit
+#define TEMP_12_BIT 0x7F // 12 bit
+
 /***** MQTT publishing feeds *****
    Each feed/channel that you wish to publish needs to be defined.
      - Adafruit IO feeds follow the form: <username>/feeds/<feedname>, for example:
@@ -110,11 +136,27 @@ unsigned long numberOfLoops = 0;
 */
 #include "MQTT_private_feeds.h"
 
+void setResolution(uint8_t resolution) {
+  ds18b20.reset();
+  ds18b20.skip();                          // Only one device on the bus, so don't need to bother with the address
+  ds18b20.write(WRITESCRATCH);             // no parasitic power (2nd argument defaults to zero)
+
+  scratchpad[CONFIGURATION] = resolution;  // Set the resolution value. Don't care about TH and TL, so don't bother setting.
+
+  for (int i = HIGH_ALARM_TEMP; i <= CONFIGURATION; i++) {  // 3 bytes required for the WRITESCRATCH command
+    ds18b20.write(scratchpad[i]);
+  }
+
+  ds18b20.reset();
+  ds18b20.skip();                          // Only one device on the bus, so don't need to bother with the address
+  ds18b20.write(COPYSCRATCH);              // no parasitic power (2nd argument defaults to zero)
+
+  delay(15);                               // Need a minimum of 10ms per datasheet after copy scratch
+}
+
 void setup()
 {
   pinMode(BOARD_LED, OUTPUT);       // Note that ESP Thing LED has reverse polarity
-  
-
 
   // Setup serial for status printing.
 #ifdef SKETCH_DEBUG
@@ -156,6 +198,32 @@ void setup()
   digitalWrite(BOARD_LED, HIGH);
   delay(500);
   digitalWrite(BOARD_LED, LOW);
+
+  // Read scratchpad to get current resolution value
+  ds18b20.reset();
+  ds18b20.skip();                    // Only one device on the bus, so don't need to bother with the address
+  ds18b20.write(READSCRATCH);        // no parasitic power (2nd argument defaults to zero)
+
+  for (int i = 0; i < 9; i++) {      // Read all 9 bytes
+    scratchpad[i] = ds18b20.read();
+  }
+
+  switch (scratchpad[CONFIGURATION]) {
+    case TEMP_9_BIT:
+      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
+      break;
+    case TEMP_10_BIT:
+      break;
+    case TEMP_11_BIT:
+      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
+      break;
+    case TEMP_12_BIT:
+      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
+      break;
+    default:
+      // Note: Unexpected CONFIG value
+      break;
+  }
 }
 
 void loop()
@@ -185,9 +253,31 @@ void loop()
 
 
 void process_ponddata() {
+  int16_t celsius, fahrenheit;
+
   // Read the temperature from the DS18B20
-  /// Add some code here ()
-  ponddata.Submerged_T = 500; /// Update with real code
+  // Start temperature conversion
+  ds18b20.reset();
+  ds18b20.skip();                // Only one device on the bus, so don't need to bother with the address
+  ds18b20.write(GETTEMP);        // no parasitic power (2nd argument defaults to zero)
+  delay(225);     // 10-bit needs 187.5 ms for conversion, add a little extra just in case
+
+  // Read back the temperature
+  ds18b20.reset();
+  ds18b20.skip();
+  ds18b20.write(READSCRATCH);
+  for ( int i = 0; i < 2; i++) {           // Only need 2 bytes to get the temperature
+    scratchpad[i] = ds18b20.read();
+  }
+
+  // Convert the data to actual temperature
+  int16_t raw = (scratchpad[1] << 8) | scratchpad[0]; // Put the temp bytes into a 16-bit integer
+  raw = raw & ~0x03;               // 10-bit resolution, so ignore 2 lsb
+  // Raw result is in 16ths of a degree Celsius
+  // fahrenheit = celsius * 1.8 + 32.0, but we want to use integer math
+  celsius = (raw * 10) >> 4;                   // Convert to 10th degree celsius
+  fahrenheit = ((celsius * 9) / 5) + 320;      // C to F using integer math (values are in tenth degrees)
+  ponddata.Submerged_T = fahrenheit;
 
   SKETCH_PRINT("WiFi RSSI: ");
   SKETCH_PRINTLN(WiFi.RSSI());
@@ -198,12 +288,12 @@ void process_ponddata() {
   SKETCH_PRINT(F("."));
   SKETCH_PRINTLN(ponddata.Submerged_T % 10);
   ponddata.Batt_mV = 3300;
-  SKETCH_PRINT("ESP8266 Vcc: ");
-  SKETCH_PRINTLN(ESP.getVcc());
-  ponddata.Pump_Status = (int) WiFi.RSSI(); 
+  //  SKETCH_PRINT("ESP8266 Vcc: ");
+  //  SKETCH_PRINTLN(ESP.getVcc());
+  ponddata.Pump_Status = (int) WiFi.RSSI();
   ponddata.Aerator_Status = 0;
-  ponddata.Millis = numberOfLoops; 
-  ponddata.Battery_T = 0; 
+  ponddata.Millis = numberOfLoops;
+  ponddata.Battery_T = 0;
 
   payload[0] = '\0';
   BuildPayload(payload, fieldBuffer, 1, ponddata.MSP_T);
@@ -217,7 +307,7 @@ void process_ponddata() {
   SKETCH_PRINT(F("Payload: "));
   SKETCH_PRINTLN(payload);
   if (! Pond_Sensor.publish(payload)) {
-  SKETCH_PRINTLN(F("Pond_Sensor Channel Failed to ThingSpeak."));
+    SKETCH_PRINTLN(F("Pond_Sensor Channel Failed to ThingSpeak."));
   }
 
 } // process_ponddata()
