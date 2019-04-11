@@ -3,6 +3,7 @@
    https://gitlab.com/Andy4495/Pond-Sensor-With-WiFi
 
    1.0 - 03/24/2019 - A.T. - Original.
+   1.1 - 04/11/2019 - A.T. - Add error checking to DS18B20 readings
 */
 
 /**
@@ -29,15 +30,11 @@
 /* BOARD CONFIGURATION AND OTHER DEFINES
    -------------------------------------
 
-   To reduce output sent to Serial, keep the following line commented:
-     //#define PRINT_ALL_CLIENT_STATUS
-   It can be uncommented to help debug connection issues
-
-   To reduce RAM (and program space) usage, disable Serial prints by
+    To reduce RAM (and program space) usage, disable Serial prints by
    commenting the line:
      //#define SKETCH_DEBUG
 */
-//#define PRINT_ALL_CLIENT_STATUS
+
 #define SKETCH_DEBUG
 
 #define NETWORK_ENABLED
@@ -52,6 +49,7 @@
 
 #define BOARD_LED 5       // On ThingDev, LED is connected to Pin 5
 #define DS18B20_SIGNAL_PIN  4
+#define MAX_RETRIES 20    // Retry attempts if error reading sensor
 
 #include <ESP8266WiFi.h>
 #include "adc_mode.h"     // Needed in order to use getVcc()
@@ -80,9 +78,9 @@ struct PondData {
   int             MSP_T;          // Tenth degrees F
   int             Submerged_T;    // Tenth degrees F
   unsigned int    Batt_mV;        // milliVolts
-  int             Pump_Status;    // Unimplemented --> Redefined to indicate WiFi RSSI
+  int             WiFi_RSSI;      // --> Redefined to indicate WiFi RSSI
   int             Aerator_Status; // Unimplemented
-  unsigned long   Millis;         // --> Redefined to indicate number of times through loop()
+  unsigned long   Loops;          // --> Redefined to indicate number of times through loop()
   int             Battery_T;      // Tenth degrees F
 };
 
@@ -254,21 +252,34 @@ void loop()
 
 void process_ponddata() {
   int16_t celsius, fahrenheit;
+  int gettemp_reset_count = 0;
+  int readscratch_reset_count = 0;
+  int crc_count = 0;
+  uint8_t calculated_crc;
 
   // Read the temperature from the DS18B20
   // Start temperature conversion
-  ds18b20.reset();
-  ds18b20.skip();                // Only one device on the bus, so don't need to bother with the address
-  ds18b20.write(GETTEMP);        // no parasitic power (2nd argument defaults to zero)
-  delay(225);     // 10-bit needs 187.5 ms for conversion, add a little extra just in case
+  while (crc_count < MAX_RETRIES) {
+    gettemp_reset_count = 0;
+    while ((ds18b20.reset() == 0) && (gettemp_reset_count < MAX_RETRIES)) {
+      gettemp_reset_count++;
+    }
+    ds18b20.skip();                // Only one device on the bus, so don't need to bother with the address
+    ds18b20.write(GETTEMP);        // no parasitic power (2nd argument defaults to zero)
+    delay(225);     // 10-bit needs 187.5 ms for conversion, add a little extra for clock inaccuracy
 
-  // Read back the temperature
-  ds18b20.reset();
-  ds18b20.skip();
-  ds18b20.write(READSCRATCH);
-  for ( int i = 0; i < 2; i++) {           // Only need 2 bytes to get the temperature
-    scratchpad[i] = ds18b20.read();
-  }
+    // Read back the temperature
+    while ((ds18b20.reset() == 0) && (readscratch_reset_count < MAX_RETRIES)) {
+      readscratch_reset_count++;
+    }
+    ds18b20.skip();
+    ds18b20.write(READSCRATCH);
+    for ( int i = 0; i < 9; i++) {           // Only need 2 bytes to get the temperature; read all 9 bytes to calculate CRC
+      scratchpad[i] = ds18b20.read();
+    }
+    if (OneWire::crc8(scratchpad, 8) == scratchpad[8]) break;  // Break out of while loop if CRC matches
+    else crc_count++;
+  } // while (crc_count < MAX_RETRIES)
 
   // Convert the data to actual temperature
   int16_t raw = (scratchpad[1] << 8) | scratchpad[0]; // Put the temp bytes into a 16-bit integer
@@ -290,19 +301,24 @@ void process_ponddata() {
   ponddata.Batt_mV = ESP.getVcc();
   SKETCH_PRINT("ESP8266 Vcc: ");
   SKETCH_PRINTLN(ponddata.Batt_mV);
-  ponddata.Pump_Status = (int) WiFi.RSSI();
+  ponddata.WiFi_RSSI = (int) WiFi.RSSI();
   ponddata.Aerator_Status = 0;
-  ponddata.Millis = numberOfLoops;
+  ponddata.Loops = numberOfLoops;
   ponddata.Battery_T = 0;
 
   payload[0] = '\0';
   BuildPayload(payload, fieldBuffer, 1, ponddata.MSP_T);
   BuildPayload(payload, fieldBuffer, 2, ponddata.Submerged_T);
   BuildPayload(payload, fieldBuffer, 3, ponddata.Batt_mV);
-  BuildPayload(payload, fieldBuffer, 4, ponddata.Millis);
-  BuildPayload(payload, fieldBuffer, 5, ponddata.Pump_Status);
+  BuildPayload(payload, fieldBuffer, 4, ponddata.Loops);
+  BuildPayload(payload, fieldBuffer, 5, ponddata.WiFi_RSSI);
   BuildPayload(payload, fieldBuffer, 6, ponddata.Aerator_Status);
   BuildPayload(payload, fieldBuffer, 7, ponddata.Battery_T);
+  if ( (gettemp_reset_count > 0) || (readscratch_reset_count > 0) || (crc_count > 0) ) {
+    BuildPayload(payload, fieldBuffer, 12, "Reset, CRC: ");
+    snprintf(fieldBuffer, FIELDBUFFERSIZE, "%d, %d, %d", gettemp_reset_count, readscratch_reset_count, crc_count);
+    strcat(payload, fieldBuffer);
+  }
   SKETCH_PRINTLN(F("Sending data to ThingSpeak..."));
   SKETCH_PRINT(F("Payload: "));
   SKETCH_PRINTLN(payload);
