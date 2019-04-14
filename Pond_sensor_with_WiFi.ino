@@ -1,5 +1,5 @@
 /**
-   Sensor Receiver Station
+   WiFi connected temperature sensor
    https://gitlab.com/Andy4495/Pond-Sensor-With-WiFi
 
    1.0 - 03/24/2019 - A.T. - Original.
