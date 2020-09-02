@@ -1,22 +1,17 @@
 /**
    WiFi connected temperature sensor
-   https://gitlab.com/Andy4495/Pond-Sensor-With-WiFi
+   https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor
 
    1.0 - 03/24/2019 - A.T. - Original.
    1.1 - 04/11/2019 - A.T. - Add error checking to DS18B20 readings
+   1.2 - 08/23/2020 - A.T. - Add support for second DS18B20
 */
 
 /**
-   Temperature sensor for Pond.
+   Temperature sensor for fish pond and turtle pond.
    - Implemented on ESP8266 using SparkFun ESP8266 ThingDev
-   - Uses DS18B20 submergible temperature sensor
+   - Uses 2x DS18B20 submergible temperature sensor
    - Connectes to ThingSpeak IoT platform using WiFi
-
-   Receiver hub for various sensor transmitting modules.
-   Uses Anaren CC110L BoosterPack as receiver module.
-   ** Note that the program will freeze in setup() if
-   ** the CC110L BoosterPack is not installed.
-
 **/
 /**
    EXTERNAL LIBRARIES:
@@ -27,15 +22,7 @@
             "else if (sub->callback_double != NULL)"
 */
 
-/* BOARD CONFIGURATION AND OTHER DEFINES
-   -------------------------------------
-
-    To reduce RAM (and program space) usage, disable Serial prints by
-   commenting the line:
-     //#define SKETCH_DEBUG
-*/
-
-#define SKETCH_DEBUG
+#define SKETCH_DEBUG   // Comment this line out to save RAM and program space.
 
 #define NETWORK_ENABLED
 
@@ -61,7 +48,7 @@
 /* The MQTT_private_config.h file needs to include the following definitions
    specific to your configuration:
      byte mac[] = {6 byte MAC address for ethernet card};
-     #define AIO_SERVER      "address of your MQTT server (e.g. io.adafruit.com)"
+     #define AIO_SERVER      "address of your MQTT server (e.g. mqtt.thingspeak.com)"
      #define AIO_SERVERPORT  Port number of your MQTT server, e.g. 1883
      #define AIO_USERNAME    "Username for MQTT server account"
      #define AIO_KEY         "MQTT key required for your MQTT server account"
@@ -92,9 +79,15 @@ struct PondData {
 PondData ponddata;
 int lostConnectionCount = 0;
 unsigned long numberOfLoops = 0;
+int gettemp_reset_count = 0;
+int readscratch_reset_count = 0;
+int crc_count = 0;
+int fish_read_error_count;
+int turtle_read_error_count;
 
 OneWire  ds18b20(DS18B20_SIGNAL_PIN);  // Requires a 4.7K pull-up resistor
-// Address is not needed since we only have one device on the bus
+byte fishThermometer[8]     = { 0x28, 0x95, 0x5C, 0x37, 0x0A, 0x00, 0x00, 0x54 };
+byte turtleThermometer[8]   = { 0x28, 0xDC, 0xAC, 0x88, 0x0A, 0x00, 0x00, 0x1A };
 uint8_t scratchpad[9];
 // OneWire commands
 #define GETTEMP         0x44  // Tells device to take a temperature reading and put it on the scratchpad
@@ -119,38 +112,15 @@ uint8_t scratchpad[9];
 
 /***** MQTT publishing feeds *****
    Each feed/channel that you wish to publish needs to be defined.
-     - Adafruit IO feeds follow the form: <username>/feeds/<feedname>, for example:
-         Adafruit_MQTT_Publish pressure = Adafruit_MQTT_Publish(&mqtt,  AIO_USERNAME "/feeds/pressure");
      - ThingSpeak Channels follow the form: channels/<CHANNEL_ID>/publish/<WRITE_API_KEY>, for example:
          Adafruit_MQTT_Publish myChannel = Adafruit_MQTT_Publish(&mqtt,
                                         "channels/" CHANNEL_ID "/publish/" CHANNEL_WRITE_API_KEY);
          See https://www.mathworks.com/help/thingspeak/publishtoachannelfeed.html
-     - Cayenne Channel format:
-     Adafruit_MQTT_Publish Topic = Adafruit_MQTT_Publish(&cayenne,
-                                "v1/" CAY_USERNAME "/things/" CAY_CLIENT_ID "/data/" CAY_CHANNEL_ID);
-       See https://mydevices.com/cayenne/docs/cayenne-mqtt-api/#cayenne-mqtt-api-mqtt-messaging-topics
+
    The file "MQTT_private_feeds.h" needs to include the feed/channel definitions
    specific to your configuration.
 */
 #include "MQTT_private_feeds.h"
-
-void setResolution(uint8_t resolution) {
-  ds18b20.reset();
-  ds18b20.skip();                          // Only one device on the bus, so don't need to bother with the address
-  ds18b20.write(WRITESCRATCH);             // no parasitic power (2nd argument defaults to zero)
-
-  scratchpad[CONFIGURATION] = resolution;  // Set the resolution value. Don't care about TH and TL, so don't bother setting.
-
-  for (int i = HIGH_ALARM_TEMP; i <= CONFIGURATION; i++) {  // 3 bytes required for the WRITESCRATCH command
-    ds18b20.write(scratchpad[i]);
-  }
-
-  ds18b20.reset();
-  ds18b20.skip();                          // Only one device on the bus, so don't need to bother with the address
-  ds18b20.write(COPYSCRATCH);              // no parasitic power (2nd argument defaults to zero)
-
-  delay(15);                               // Need a minimum of 10ms per datasheet after copy scratch
-}
 
 void setup()
 {
@@ -197,41 +167,19 @@ void setup()
   delay(500);
   digitalWrite(BOARD_LED, LOW);
 
-  // Read scratchpad to get current resolution value
-  ds18b20.reset();
-  ds18b20.skip();                    // Only one device on the bus, so don't need to bother with the address
-  ds18b20.write(READSCRATCH);        // no parasitic power (2nd argument defaults to zero)
-
-  for (int i = 0; i < 9; i++) {      // Read all 9 bytes
-    scratchpad[i] = ds18b20.read();
-  }
-
-  switch (scratchpad[CONFIGURATION]) {
-    case TEMP_9_BIT:
-      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
-      break;
-    case TEMP_10_BIT:
-      break;
-    case TEMP_11_BIT:
-      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
-      break;
-    case TEMP_12_BIT:
-      setResolution(TEMP_10_BIT);         // Change resolution to 10 bits
-      break;
-    default:
-      // Note: Unexpected CONFIG value
-      break;
-  }
-}
+  set_resolution_10_bit(fishThermometer);
+  set_resolution_10_bit(turtleThermometer);
+}  // setup()
 
 void loop()
 {
   // Ensure the connection to the MQTT server is alive (this will make the first
   // connection and automatically reconnect when disconnected).
-  //  MQTT_connect(&cayenne, &client_cayenne);
   MQTT_connect(&thingspeak, &client_ts);
 
-  process_ponddata();
+  process_fishdata();
+  process_turtledata();
+  build_MQTT_message();
 
   SKETCH_PRINTLN(F("--"));
   digitalWrite(BOARD_LED, HIGH);
@@ -249,13 +197,34 @@ void loop()
   delay(3UL * 60UL * 1000UL);
 }
 
+void setResolution(uint8_t resolution, byte* address) {
+  ds18b20.reset();
+  ds18b20.select(address);
+  ds18b20.write(WRITESCRATCH);             // no parasitic power (2nd argument defaults to zero)
 
-void process_ponddata() {
+  scratchpad[CONFIGURATION] = resolution;  // Set the resolution value. Don't care about TH and TL, so don't bother setting.
+
+  for (int i = HIGH_ALARM_TEMP; i <= CONFIGURATION; i++) {  // 3 bytes required for the WRITESCRATCH command
+    ds18b20.write(scratchpad[i]);
+  }
+
+  ds18b20.reset();
+  ds18b20.select(address);
+  ds18b20.write(COPYSCRATCH);              // no parasitic power (2nd argument defaults to zero)
+
+  delay(15);                               // Need a minimum of 10ms per datasheet after copy scratch
+}
+
+void process_fishdata() {
   int16_t celsius, fahrenheit;
-  int gettemp_reset_count = 0;
-  int readscratch_reset_count = 0;
-  int crc_count = 0;
   uint8_t calculated_crc;
+  gettemp_reset_count = 0;
+  readscratch_reset_count = 0;
+  crc_count = 0;
+  fish_read_error_count = 0;
+
+  // Clear out the scratchpad
+  memset(scratchpad, 0, 9);
 
   // Read the temperature from the DS18B20
   // Start temperature conversion
@@ -264,7 +233,7 @@ void process_ponddata() {
     while ((ds18b20.reset() == 0) && (gettemp_reset_count < MAX_RETRIES)) {
       gettemp_reset_count++;
     }
-    ds18b20.skip();                // Only one device on the bus, so don't need to bother with the address
+    ds18b20.select(fishThermometer);
     ds18b20.write(GETTEMP);        // no parasitic power (2nd argument defaults to zero)
     delay(225);     // 10-bit needs 187.5 ms for conversion, add a little extra for clock inaccuracy
 
@@ -272,7 +241,7 @@ void process_ponddata() {
     while ((ds18b20.reset() == 0) && (readscratch_reset_count < MAX_RETRIES)) {
       readscratch_reset_count++;
     }
-    ds18b20.skip();
+    ds18b20.select(fishThermometer);
     ds18b20.write(READSCRATCH);
     for ( int i = 0; i < 9; i++) {           // Only need 2 bytes to get the temperature; read all 9 bytes to calculate CRC
       scratchpad[i] = ds18b20.read();
@@ -289,22 +258,76 @@ void process_ponddata() {
   celsius = (raw * 10) >> 4;                   // Convert to 10th degree celsius
   fahrenheit = ((celsius * 9) / 5) + 320;      // C to F using integer math (values are in tenth degrees)
   ponddata.Submerged_T = fahrenheit;
+  fish_read_error_count = gettemp_reset_count + readscratch_reset_count + crc_count;
+} // process_fishdata()
 
-  SKETCH_PRINT("WiFi RSSI: ");
-  SKETCH_PRINTLN(WiFi.RSSI());
+void process_turtledata() {
+  int16_t celsius, fahrenheit;
+  uint8_t calculated_crc;
+  gettemp_reset_count = 0;
+  readscratch_reset_count = 0;
+  crc_count = 0;
+  turtle_read_error_count = 0;
 
-  SKETCH_PRINTLN(F("Sending pond sensor info. "));
-  SKETCH_PRINT(F("Submerged Temperature (F): "));
-  SKETCH_PRINT(ponddata.Submerged_T / 10);
-  SKETCH_PRINT(F("."));
-  SKETCH_PRINTLN(ponddata.Submerged_T % 10);
-  ponddata.Batt_mV = ESP.getVcc();
-  SKETCH_PRINT("ESP8266 Vcc: ");
-  SKETCH_PRINTLN(ponddata.Batt_mV);
+  // Clear out the scratchpad
+  memset(scratchpad, 0, 9);
+
+  // Read the temperature from the DS18B20
+  // Start temperature conversion
+  while (crc_count < MAX_RETRIES) {
+    gettemp_reset_count = 0;
+    while ((ds18b20.reset() == 0) && (gettemp_reset_count < MAX_RETRIES)) {
+      gettemp_reset_count++;
+    }
+    ds18b20.select(turtleThermometer);
+    ds18b20.write(GETTEMP);        // no parasitic power (2nd argument defaults to zero)
+    delay(225);     // 10-bit needs 187.5 ms for conversion, add a little extra for clock inaccuracy
+
+    // Read back the temperature
+    while ((ds18b20.reset() == 0) && (readscratch_reset_count < MAX_RETRIES)) {
+      readscratch_reset_count++;
+    }
+    ds18b20.select(turtleThermometer);
+    ds18b20.write(READSCRATCH);
+    for ( int i = 0; i < 9; i++) {           // Only need 2 bytes to get the temperature; read all 9 bytes to calculate CRC
+      scratchpad[i] = ds18b20.read();
+    }
+    if (OneWire::crc8(scratchpad, 8) == scratchpad[8]) break;  // Break out of while loop if CRC matches
+    else crc_count++;
+  } // while (crc_count < MAX_RETRIES)
+
+  // Convert the data to actual temperature
+  int16_t raw = (scratchpad[1] << 8) | scratchpad[0]; // Put the temp bytes into a 16-bit integer
+  raw = raw & ~0x03;               // 10-bit resolution, so ignore 2 lsb
+  // Raw result is in 16ths of a degree Celsius
+  // fahrenheit = celsius * 1.8 + 32.0, but we want to use integer math
+  celsius = (raw * 10) >> 4;                   // Convert to 10th degree celsius
+  fahrenheit = ((celsius * 9) / 5) + 320;      // C to F using integer math (values are in tenth degrees)
+  ponddata.MSP_T = fahrenheit;
+  turtle_read_error_count = gettemp_reset_count + readscratch_reset_count + crc_count;
+} // process_turtledata()
+
+void build_MQTT_message() {
+
   ponddata.WiFi_RSSI = (int) WiFi.RSSI();
   ponddata.Aerator_Status = 0;
   ponddata.Loops = numberOfLoops;
   ponddata.Battery_T = 0;
+
+  SKETCH_PRINTLN(F("Sending pond sensor info. "));
+  SKETCH_PRINT("WiFi RSSI: ");
+  SKETCH_PRINTLN(ponddata.WiFi_RSSI);
+  SKETCH_PRINT(F("Fish Temperature (F): "));
+  SKETCH_PRINT(ponddata.Submerged_T / 10);
+  SKETCH_PRINT(F("."));
+  SKETCH_PRINTLN(ponddata.Submerged_T % 10);
+  SKETCH_PRINT(F("Turtle Temperature (F): "));
+  SKETCH_PRINT(ponddata.MSP_T / 10);
+  SKETCH_PRINT(F("."));
+  SKETCH_PRINTLN(ponddata.MSP_T % 10);
+  ponddata.Batt_mV = ESP.getVcc();
+  SKETCH_PRINT("ESP8266 Vcc: ");
+  SKETCH_PRINTLN(ponddata.Batt_mV);
 
   payload[0] = '\0';
   BuildPayload(payload, fieldBuffer, 1, ponddata.MSP_T);
@@ -314,9 +337,9 @@ void process_ponddata() {
   BuildPayload(payload, fieldBuffer, 5, ponddata.WiFi_RSSI);
   BuildPayload(payload, fieldBuffer, 6, ponddata.Aerator_Status);
   BuildPayload(payload, fieldBuffer, 7, ponddata.Battery_T);
-  if ( (gettemp_reset_count > 0) || (readscratch_reset_count > 0) || (crc_count > 0) ) {
-    BuildPayload(payload, fieldBuffer, 12, "Reset, CRC: ");
-    snprintf(fieldBuffer, FIELDBUFFERSIZE, "%d, %d, %d", gettemp_reset_count, readscratch_reset_count, crc_count);
+  if ( (fish_read_error_count > 0) || (turtle_read_error_count > 0) ) {
+    BuildPayload(payload, fieldBuffer, 12, "Fish, Turt: ");
+    snprintf(fieldBuffer, FIELDBUFFERSIZE, "%d, %d", fish_read_error_count, turtle_read_error_count);
     strcat(payload, fieldBuffer);
   }
   SKETCH_PRINTLN(F("Sending data to ThingSpeak..."));
@@ -325,9 +348,36 @@ void process_ponddata() {
   if (! Pond_Sensor.publish(payload)) {
     SKETCH_PRINTLN(F("Pond_Sensor Channel Failed to ThingSpeak."));
   }
+} // build_MQTT_message()
 
-} // process_ponddata()
+void set_resolution_10_bit(byte* address) {
 
+  // Read scratchpad to get current resolution value
+  ds18b20.reset();
+  ds18b20.select(address);                    // Only one device on the bus, so don't need to bother with the address
+  ds18b20.write(READSCRATCH);        // no parasitic power (2nd argument defaults to zero)
+
+  for (int i = 0; i < 9; i++) {      // Read all 9 bytes
+    scratchpad[i] = ds18b20.read();
+  }
+
+  switch (scratchpad[CONFIGURATION]) {
+    case TEMP_9_BIT:
+      setResolution(TEMP_10_BIT, address);         // Change resolution to 10 bits
+      break;
+    case TEMP_10_BIT:
+      break;
+    case TEMP_11_BIT:
+      setResolution(TEMP_10_BIT, address);         // Change resolution to 10 bits
+      break;
+    case TEMP_12_BIT:
+      setResolution(TEMP_10_BIT, address);         // Change resolution to 10 bits
+      break;
+    default:
+      // Note: Unexpected CONFIG value
+      break;
+  }
+}
 
 // Function to connect and reconnect as necessary to the MQTT server.
 // Should be called in the loop function and it will take care of connecting.
@@ -344,7 +394,6 @@ void MQTT_connect(Adafruit_MQTT_Client * mqtt_server, WiFiClient * client ) {
   SKETCH_PRINT(F("Attempting reconnect to MQTT: "));
   SKETCH_PRINTLN(millis());
   ret = mqtt_server->connect();
-
 }
 
 /*******************************************************************
