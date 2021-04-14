@@ -31,8 +31,13 @@ else if (sub->callback_double != NULL)
 * SparkFun [Waterproof Temperature Sensor with DS18B20][2]
 * Adafruit [MQTT Library][5]
 
+## License ##
+The software and other files in this repository are released under what is commonly called the [MIT License][100]. See the file [`LICENSE`][101] in this repository.
+
 [1]: https://www.sparkfun.com/products/13711
 [2]: https://www.sparkfun.com/products/11050
 [3]: https://thingspeak.com/
 [4]: https://cdn.sparkfun.com/datasheets/Sensors/Temp/DS18B20.pdf
 [5]: https://github.com/adafruit/Adafruit_MQTT_Library
+[100]: https://choosealicense.com/licenses/mit/
+[101]: ./LICENSE
