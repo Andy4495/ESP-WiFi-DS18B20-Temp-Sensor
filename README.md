@@ -6,7 +6,7 @@ The sensor sends data to [ThingSpeak's IoT][3] platform using MQTT. This require
 
 ## Hardware
 
-This particular device is line powered, and is therefore not optimized for low-power operation. The DS18B20 sensors are connected in external power mode (i.e., not using parasitic power), and the ESP8266 is always fully on and does not use any low-power modes.
+This particular sensor module is line powered, and is therefore not optimized for low-power operation. The DS18B20 temperature sensors are connected in external power mode (i.e., not using parasitic power), and the ESP8266 is always fully on and does not use any low-power modes.
 
 The signal pin definition is near the top of the sketch and can be changed as needed.
 
@@ -22,11 +22,14 @@ I have two sensors connected (both to the same OneWire signal pin), one with abo
 
 Adafruit [MQTT Library][5]
 
-- Library file Adafruit_MQTT.cpp modified to comment out lines 425-431 to remove support for floating point. Specifically, commented out the block starting with:
+- This sketch has been tested with library version 0.20.1 with the following modification:
+  - In library file Adafruit_MQTT.cpp, comment out lines 425-431 to remove support for floating point. Specifically, comment out the block starting with:
 
-  ``` cpp
-  else if (sub->callback_double != NULL)
-  ```
+    ``` cpp
+    else if (sub->callback_double != NULL)
+    ```
+
+- Newer library versions may also work, or may require some minor code changes.
 
 ## References
 
