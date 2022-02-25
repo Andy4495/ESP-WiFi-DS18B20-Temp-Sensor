@@ -1,2 +1,4 @@
 MQTT_private_config.h
 MQTT_private_feeds.h
+.vscode/*
+.DS_Store
