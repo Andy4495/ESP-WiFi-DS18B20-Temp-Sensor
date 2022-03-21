@@ -1,5 +1,7 @@
 # Wireless DS18B20 Temperature Sensor
 
+[![Check Markdown Links](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/CheckMarkdownLinks.yml/badge.svg)](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/CheckMarkdownLinks.yml)
+
 The wireless temperature sensor is designed to use an ESP8266 controller and two DS18B20 temperature sensors using the 1-Wire protocol. The specific devices used in my project are SparkFun's [ESP8266 Thing - Dev Board][1] and SparkFun's [waterproof DS18B20][2] sensors, but the code should work as-is or with minor modifications on other ESP8266 and DS18B20 devices.
 
 The sensor sends data to [ThingSpeak's IoT][3] platform using MQTT. This requires the definition of various user-specific values and keys which are defined in header files not included in this repo. Instructions for the format of these header files are included in the sketch comments.
