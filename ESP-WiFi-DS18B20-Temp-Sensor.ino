@@ -10,6 +10,7 @@
                              In addition to code changes and updated comments in this file,
                              API-specific changes were made in
                              MQTT_private_config.h and MQTT_private_feeds.h
+   2.1 - 06/20/2022 - A.T. - Clarifications.
 */
 
 /**
@@ -44,21 +45,22 @@
 #define MAX_RETRIES 20    // Retry attempts if error reading sensor
 
 #include <ESP8266WiFi.h>
+ADC_MODE(ADC_VCC);  // This macro is needed in order to use getVcc()
 #include <OneWire.h>
-// This macro is needed in order to use getVcc():
-ADC_MODE(ADC_VCC);
-
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 #include "MQTT_private_config.h"
 /* The MQTT_private_config.h file needs to include the following definitions
    specific to your configuration:
      byte mac[] = {6 byte MAC address for ethernet card};
-     #define TS_SERVER        "address of your MQTT server (e.g. io.adafruit.com)"
+     const char* ssid = "Your WiFi SSID";     // SSID of the WiFi network you will connectd to
+     const char* password = "WiFi-password";  // Password to the WiFi network you will connect to
+     
+     #define TS_SERVER        "address of your MQTT server (e.g. mqtt3.thingspeak.com)"
      #define TS_SERVERPORT    Port number of your MQTT server, e.g. 1883
      #define TS_CLIENTID      "Client ID for your ThingSpeak MQTT device (typically same as Username)"
      #define TS_USERNAME      "Username for your ThingSpeak MQTT device"
-     #define TS_KEY          "Password for your ThingSpeak MQTT device"
+     #define TS_KEY           "Password for your ThingSpeak MQTT device"
    Also, #define CHANNEL_IDs for each of your sensors
 */
 WiFiClient client_ts;
@@ -117,19 +119,11 @@ uint8_t scratchpad[9];
 #define TEMP_11_BIT 0x5F // 11 bit
 #define TEMP_12_BIT 0x7F // 12 bit
 
-#include "MQTT_private_feeds.h"
 /***** MQTT publishing feeds *****
-   Each feed/channel that you wish to publish needs to be defined.
-     - ThingSpeak Channel topics follow the form: channels/<CHANNEL_ID>/publish, for example:
-         Adafruit_MQTT_Publish myChannel = Adafruit_MQTT_Publish(&mqtt,
-                                        "channels/" CHANNEL_ID "/publish");
-         See https://www.mathworks.com/help/thingspeak/publishtoachannelfeed.html
-         See https://www.mathworks.com/help/thingspeak/release-notes.html for changes to the MQTT3
-         interface included in R2021a release. The key change is that instead of using a per-channel
-         API key, each publishing device has it's own device credentials.
-   The file "MQTT_private_feeds.h" needs to include the feed/channel definitions
+   The file "MQTT_publishing_feeds.h" needs to include the feed/channel definitions
    specific to your configuration.
 */
+#include "MQTT_publishing_feeds.h"
 
 void setup()
 {
