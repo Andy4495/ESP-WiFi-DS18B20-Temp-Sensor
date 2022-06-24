@@ -3,9 +3,15 @@
 [![Arduino Compile Sketches](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/arduino-compile-sketches.yml/badge.svg)](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/arduino-compile-sketches.yml)
 [![Check Markdown Links](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/CheckMarkdownLinks.yml/badge.svg)](https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor/actions/workflows/CheckMarkdownLinks.yml)
 
-The wireless temperature sensor is designed to use an ESP8266 controller and two DS18B20 temperature sensors using the 1-Wire protocol. The specific devices used in my project are SparkFun's [ESP8266 Thing - Dev Board][1] and SparkFun's [waterproof DS18B20][2] sensors, but the code should work as-is or with minor modifications on other ESP8266 and DS18B20 devices.
+The wireless temperature sensor is designed to use an ESP8266 controller to send data to [ThingSpeak's IoT][3] platform using MQTT. It gathers data from two DS18B20 temperature sensors using the 1-Wire protocol. The specific devices used in my project are SparkFun's [ESP8266 Thing - Dev Board][1] and SparkFun's [waterproof DS18B20][2] sensors, but the code should work as-is or with minor modifications on other ESP8266 and DS18B20 devices.
 
-The sensor sends data to [ThingSpeak's IoT][3] platform using MQTT. This requires the definition of various user-specific values and keys which are defined in header files not included in this repo. Instructions for the format of these header files are included in the sketch comments.
+## Header Files for User-Specific Info
+
+In order to compile the code, an additional header file is needed: `MQTT_private_config.h`.
+
+A template of the file named `MQTT_private_config-template` is included in the repo. This file should be updated with data specific to your configuration and then be copied to `MQTT_private_config.h`.
+
+In addition, `MQTT_publishing_feeds.h` should be updated with channel information specific to your application.
 
 ## Hardware
 
@@ -23,16 +29,8 @@ I have two sensors connected (both to the same OneWire signal pin), one with abo
 
 ## External Libraries
 
-Adafruit [MQTT Library][5]
-
-- This sketch has been tested with library version 0.20.1 with the following modification:
-  - In library file Adafruit_MQTT.cpp, comment out lines 425-431 to remove support for floating point. Specifically, comment out the block starting with:
-
-    ``` cpp
-    else if (sub->callback_double != NULL)
-    ```
-
-- Newer library versions may also work, or may require some minor code changes.
+- Adafruit [MQTT Library][5]
+- [OneWire Library][6]
 
 ## References
 
@@ -50,6 +48,7 @@ The software and other files in this repository are released under what is commo
 [3]: https://thingspeak.com/
 [4]: https://cdn.sparkfun.com/datasheets/Sensors/Temp/DS18B20.pdf
 [5]: https://github.com/adafruit/Adafruit_MQTT_Library
+[6]: https://github.com/PaulStoffregen/OneWire
 [100]: https://choosealicense.com/licenses/mit/
 [101]: ./LICENSE
 [200]: https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor
