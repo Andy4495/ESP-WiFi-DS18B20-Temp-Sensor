@@ -37,6 +37,7 @@ I have two sensors connected (both to the same OneWire signal pin), one with abo
 - [DS18B20][4] Digital Thermometer
 - SparkFun [ESP8266 Thing - Dev][1]
 - SparkFun [Waterproof Temperature Sensor with DS18B20][2]
+  - Adafruit sells a [similar sensor][8]
 - Adafruit [MQTT Library][5]
 
 ## License
@@ -49,6 +50,7 @@ The software and other files in this repository are released under what is commo
 [4]: https://cdn.sparkfun.com/datasheets/Sensors/Temp/DS18B20.pdf
 [5]: https://github.com/adafruit/Adafruit_MQTT_Library
 [6]: https://github.com/PaulStoffregen/OneWire
+[8]: https://www.adafruit.com/product/381
 [100]: https://choosealicense.com/licenses/mit/
 [101]: ./LICENSE
 [200]: https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor
