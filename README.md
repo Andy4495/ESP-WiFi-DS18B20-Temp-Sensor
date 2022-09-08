@@ -53,4 +53,4 @@ The software and other files in this repository are released under what is commo
 [8]: https://www.adafruit.com/product/381
 [100]: https://choosealicense.com/licenses/mit/
 [101]: ./LICENSE
-[200]: https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor
+[//]: # ([200]: https://github.com/Andy4495/ESP-WiFi-DS18B20-Temp-Sensor)
