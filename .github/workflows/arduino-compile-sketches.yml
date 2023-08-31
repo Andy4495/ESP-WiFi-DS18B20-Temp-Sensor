@@ -26,7 +26,7 @@ jobs:
     uses: Andy4495/.github/.github/workflows/arduino-compile-sketches.yml@main
     with:
       message: ${{ inputs.message }}
-      copyfile: 
+      copyfile: MQTT_private_config
       fqbn: ${{ matrix.fqbn }}
       platform-name: ${{ matrix.platform-name }}
       platform-sourceurl: ${{ matrix.platform-sourceurl }}
