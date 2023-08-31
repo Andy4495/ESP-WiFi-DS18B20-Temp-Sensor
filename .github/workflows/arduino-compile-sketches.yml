@@ -4,44 +4,35 @@ name: Arduino Compile Sketches
 
 on: 
   push:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Message to display in job summary
+        required: false
+        type: string
 
 jobs:
   compile-sketches: 
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@main
-      - name: Clone compile-sketches to get python version (using nektos/act locally)
-        if: ${{ env.ACT }}
-        run: cd /tmp; git clone 'https://github.com/arduino/compile-sketches'
-      - name: setup-python (when running locally for nektos/act compatibility)
-        if: ${{ env.ACT }}
-        uses: actions/setup-python@v4
-        with:
-          python-version-file: /tmp/compile-sketches/.python-version
-      - name: Install Poetry (when running locally for nektos/act compatibility)
-        if: ${{ env.ACT }}
-        uses: snok/install-poetry@v1
-      - name: Install pipx (when running locally for nektos/act compatibility)
-        if: ${{ env.ACT }}
-        run: pip install pipx
-      - name: Copy dummy secrets file.
-        run: |
-          cp MQTT_private_config-template.h MQTT_private_config.h
-      - uses: arduino/compile-sketches@v1
-        with:
-          fqbn: 'esp8266:esp8266:thing'
-          platforms: |
-            - name: 'esp8266:esp8266'
-              version: latest
-              source-url: 'http://arduino.esp8266.com/stable/package_esp8266com_index.json'
-          sketch-paths: |
-            - .
-          verbose: true
-          enable-warnings-report: true
-          libraries: |
-            - source-path: ./
-            - name: OneWire
-            - name: Adafruit MQTT Library
+    strategy:
+      matrix:
+        include:
+          - arch: esp8266
+            fqbn: 'esp8266:esp8266:thing'
+            platform-name: 'esp8266:esp8266'
+            platform-sourceurl: 'http://arduino.esp8266.com/stable/package_esp8266com_index.json'
 
 
+    name: call-compile-sketches-workflow
+    uses: Andy4495/.github/.github/workflows/arduino-compile-sketches.yml@main
+    with:
+      message: ${{ inputs.message }}
+      copyfile: 
+      fqbn: ${{ matrix.fqbn }}
+      platform-name: ${{ matrix.platform-name }}
+      platform-sourceurl: ${{ matrix.platform-sourceurl }}
+      platform-version: latest
+      libraries: |
+        - source-path: ./
+        - name: OneWire
+        - name: Adafruit MQTT Library
 
