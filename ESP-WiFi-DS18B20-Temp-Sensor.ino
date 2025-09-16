@@ -21,11 +21,9 @@
 **/
 /**
    EXTERNAL LIBRARIES:
-   - MQTT: https://github.com/adafruit/Adafruit_MQTT_Library
-       - Adafruit_MQTT.cpp modified to comment out lines 425-431
-         to remove support for floating point. Specifically,
-         commented out the block starting with:
-            "else if (sub->callback_double != NULL)"
+   - For MQTT, this library uses a modified version of https://github.com/adafruit/Adafruit_MQTT_Library: 
+    - https://github.com/Andy4495/Adafruit_MQTT_Library-1.3.0
+   - https://github.com/PaulStoffregen/OneWire
 */
 
 #define SKETCH_DEBUG   // Comment this line out to save RAM and program space.
@@ -46,9 +44,9 @@
 
 #include <ESP8266WiFi.h>
 ADC_MODE(ADC_VCC);  // This macro is needed in order to use getVcc()
-#include <OneWire.h>
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
+#include <OneWire.h>              // https://github.com/PaulStoffregen/OneWire
+#include "Adafruit_MQTT.h"        // https://github.com/Andy4495/Adafruit_MQTT_Library-1.3.0
+#include "Adafruit_MQTT_Client.h" // https://github.com/Andy4495/Adafruit_MQTT_Library-1.3.0
 #include "MQTT_private_config.h"
 /* The MQTT_private_config.h file needs to include the following definitions
    specific to your configuration:
